@@ -33,7 +33,7 @@ jobs:
           POST_AS_DRAFT: ${{ vars.POST_AS_DRAFT || 'true' }}
           BLOG_NICHE: ${{ vars.BLOG_NICHE || '생활정보와 실용 가이드' }}
           TOPIC_SOURCE: ${{ vars.TOPIC_SOURCE || 'mixed' }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.0-flash' }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
         run: python main.py
 
       - name: Success notice
