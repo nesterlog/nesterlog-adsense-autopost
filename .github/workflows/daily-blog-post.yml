@@ -1,9 +1,10 @@
-name: 애드센스용 블로그 초안 생성
+name: 애드센스용 블로그 자동 발행
 
 on:
   schedule:
-    # 한국시간 매일 오전 10시 = UTC 01:00 (하루 1회)
+    # A모드: 하루 2회 (한국시간 10:00, 18:00 = UTC 01:00, 09:00)
     - cron: "0 1 * * *"
+    - cron: "0 9 * * *"
   workflow_dispatch:
 
 jobs:
@@ -23,14 +24,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Generate draft post
+      - name: Generate and publish post
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           G_REFRESH_TOKEN: ${{ secrets.G_REFRESH_TOKEN }}
           G_CLIENT_ID: ${{ secrets.G_CLIENT_ID }}
           G_CLIENT_SECRET: ${{ secrets.G_CLIENT_SECRET }}
           BLOGGER_BLOG_ID: ${{ secrets.BLOGGER_BLOG_ID }}
-          POST_AS_DRAFT: ${{ vars.POST_AS_DRAFT || 'true' }}
+          POST_AS_DRAFT: ${{ vars.POST_AS_DRAFT || 'false' }}
           BLOG_NICHE: ${{ vars.BLOG_NICHE || '생활정보와 실용 가이드' }}
           TOPIC_SOURCE: ${{ vars.TOPIC_SOURCE || 'topics' }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
@@ -39,11 +40,10 @@ jobs:
       - name: Success notice
         if: success()
         run: |
-          echo "초안 생성 성공"
+          echo "발행(또는 초안) 성공"
           echo "시간: $(date -u)"
-          echo "Blogger 초안함에서 검수 후 발행하세요."
 
       - name: Failure notice
         if: failure()
         run: |
-          echo "초안 생성 실패 — Actions 로그를 확인하세요."
+          echo "실패 — Actions 로그를 확인하세요."

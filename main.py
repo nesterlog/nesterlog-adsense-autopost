@@ -20,8 +20,8 @@ GEMINI_API_URL = (
     f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
 )
 
-# 애드센스 승인용: 기본은 초안 저장 (true/false)
-POST_AS_DRAFT = os.getenv("POST_AS_DRAFT", "true").lower() in ("1", "true", "yes")
+# A모드(쉬운 모드): 기본 자동 공개. 초안만 원하면 POST_AS_DRAFT=true
+POST_AS_DRAFT = os.getenv("POST_AS_DRAFT", "false").lower() in ("1", "true", "yes")
 
 # 블로그 한 줄 니치 (예: 생활정보, 육아, 재테크, 여행)
 BLOG_NICHE = os.getenv("BLOG_NICHE", "생활정보와 실용 가이드")
@@ -138,7 +138,7 @@ def build_featured_image_html(alt_text, english_keyword="lifestyle"):
         f'<figure class="featured-image" style="margin:0 0 1.5em 0;">'
         f'<img src="{src}" alt="{alt}" width="1200" height="630" '
         f'style="max-width:100%;height:auto;border-radius:8px;" loading="lazy" />'
-        f"<figcaption style=\"font-size:0.9em;color:#666;\">{alt} (스톡 이미지 · 발행 전 교체 권장)</figcaption>"
+        f'<figcaption style="font-size:0.9em;color:#666;">{alt}</figcaption>'
         f"</figure>"
     )
 
@@ -176,26 +176,30 @@ def generate_content(topic, category):
     today = datetime.now().strftime("%Y년 %m월 %d일")
 
     prompt = f"""
-당신은 한국 블로그 '네스터로그(nesterlog.com)'의 전문 한국어 블로거입니다.
-애드센스 승인을 목표로, 독자에게 실제로 도움이 되는 고품질 한국어 글을 작성하세요.
-직접 해본 것처럼 구체적인 숫자·순서·실패 사례를 넣고, 뻔한 AI 문장 투를 피하세요.
+당신은 한국 생활정보 블로그 '네스터로그'를 쓰는 실제 사람입니다.
+인플루언서 과장 톤이 아니라, 옆집 친구가 경험 공유하듯 담백하고 구체적으로 쓰세요.
+(humanizer 원칙: AI티 제거 — '단순히~아니라', '핵심은 바로', '정리하자면' 남발 금지,
+짧은 문장과 긴 문장을 섞고, 불필요한 강조·드라마틱 한 줄 마무리 금지)
 
-블로그 니치(주제 축): {BLOG_NICHE}
-오늘 다룰 소재: "{topic}"
-소재 출처 분류: {category}
+블로그 니치: {BLOG_NICHE}
+오늘 주제: "{topic}"
+분류: {category}
 작성일: {today}
 
+문체:
+- 존댓말, 자연스러운 구어체 약간 허용 ("저는 ~했어요", "이런 실수 했어요")
+- 파워블로그처럼 허세·클릭베이트·이모지 과다 금지
+- 구체적인 숫자/순서/실패 경험 최소 2개
+- 독자가 오늘 바로 따라 할 수 있게
+
 중요 규칙:
-1. 반드시 자연스러운 한국어로만 작성
-2. 뉴스 베끼지 말고, 독자가 바로 따라 할 수 있는 가이드/체크리스트 중심
-3. 허위·과장·의료/법률/투자 확정 조언 금지. 필요하면 "참고용"
-4. HTML만 사용. 마크다운(**볼드**) 금지
-5. 본문 한국어 기준 약 1,500~2,500자 분량
-6. 존재하지 않는 URL 금지. 불확실하면 외부 링크 넣지 말 것
-7. href="#" 금지
-8. 본문에 <img> 태그 넣지 말 것 (이미지는 시스템이 따로 넣음)
-9. "카테고리:" 라는 문구를 본문에 쓰지 말 것 (라벨은 시스템이 처리)
-10. 제목/본문에 '애드센스 승인', '수익화 꿀팁' 같은 메타성 주제 금지
+1. 한국어 HTML만 (마크다운 금지)
+2. 허위·의료/법률/투자 확정 조언 금지
+3. 약 1,500~2,500자
+4. 가짜 URL / href="#" 금지
+5. 본문에 <img> 넣지 말 것
+6. 본문에 "카테고리:" 문구 넣지 말 것
+7. 애드센스·수익화 메타 주제 금지
 
 응답 형식(이 순서를 반드시 지킬 것):
 
@@ -430,7 +434,10 @@ def post_to_blogger(title, content, category, seo_data=None):
                 print(f"  핵심어: {seo_data['focus_keyphrase']}")
             if seo_data.get("keywords"):
                 print(f"  키워드: {seo_data['keywords']}")
-        print("다음 단계: Blogger에서 초안을 열어 이미지·문장 다듬은 뒤 발행하세요.")
+        if POST_AS_DRAFT:
+            print("초안 모드: Blogger 초안함에서 확인하세요.")
+        else:
+            print("A모드: 자동 공개 완료. 사이트에서 확인하세요.")
         return True
     except Exception as e:
         print(f"Blogger 게시 오류: {e}")
@@ -439,9 +446,9 @@ def post_to_blogger(title, content, category, seo_data=None):
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("네스터로그 애드센스용 자동 초안 생성기")
+    print("네스터로그 애드센스 자동 발행 (A모드 지원)")
     print(f"니치: {BLOG_NICHE}")
-    print(f"초안 모드: {POST_AS_DRAFT}")
+    print(f"초안만 저장: {POST_AS_DRAFT}")
     print(f"주제 소스: {TOPIC_SOURCE}")
     print("=" * 60)
 
