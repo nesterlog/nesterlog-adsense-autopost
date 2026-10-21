@@ -27,7 +27,7 @@ POST_AS_DRAFT = os.getenv("POST_AS_DRAFT", "true").lower() in ("1", "true", "yes
 BLOG_NICHE = os.getenv("BLOG_NICHE", "생활정보와 실용 가이드")
 
 # 주제 선택: topics = topics_ko.txt / news = 한국 뉴스 / mixed = 둘 다
-TOPIC_SOURCE = os.getenv("TOPIC_SOURCE", "mixed").lower()
+TOPIC_SOURCE = os.getenv("TOPIC_SOURCE", "topics").lower()
 
 TOPICS_FILE = Path(__file__).resolve().parent / "topics_ko.txt"
 
@@ -123,6 +123,50 @@ def convert_markdown_to_html(text):
     return text
 
 
+def build_featured_image_html(alt_text, english_keyword="lifestyle"):
+    """대표 이미지 1장 HTML (테마 썸네일용). 무료 스톡 이미지."""
+    safe_kw = re.sub(r"[^a-zA-Z0-9,\-]", "", english_keyword.replace(" ", ","))[:40] or "lifestyle"
+    # picsum + 시드로 글마다 다른 이미지, 실패 시 unsplash 소스 대체 가능
+    seed = abs(hash(alt_text)) % 100000
+    src = f"https://picsum.photos/seed/{seed}/1200/630"
+    alt = (alt_text or "대표 이미지").replace('"', "")
+    return (
+        f'<figure class="featured-image" style="margin:0 0 1.5em 0;">'
+        f'<img src="{src}" alt="{alt}" width="1200" height="630" '
+        f'style="max-width:100%;height:auto;border-radius:8px;" />'
+        f"<figcaption style=\"font-size:0.9em;color:#666;\">{alt}</figcaption>"
+        f"</figure>"
+    )
+
+
+def insert_featured_image(body, seo_data, topic):
+    """본문 맨 앞(또는 h1 뒤)에 대표 이미지 1장 삽입. 카테고리 메타 줄 제거."""
+    body = re.sub(
+        r'<p class="meta">.*?</p>',
+        "",
+        body,
+        count=1,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    body = re.sub(r"<strong>카테고리:.*?</strong>\s*\|\s*", "", body)
+    body = re.sub(r"카테고리:\s*[^|<]+(\||</)", r"\1", body)
+
+    alt = seo_data.get("focus_keyphrase") or topic or BLOG_NICHE
+    # 영문 키워드는 슬러그에서 추출
+    en = seo_data.get("url_slug") or "daily,life,guide"
+    en = en.replace("-", ",")
+    img = build_featured_image_html(alt, en)
+
+    if re.search(r"<img\s", body, re.IGNORECASE):
+        return body
+
+    if "</h1>" in body:
+        return body.replace("</h1>", "</h1>\n" + img, 1)
+    if "<article>" in body:
+        return body.replace("<article>", "<article>\n" + img, 1)
+    return img + "\n" + body
+
+
 def generate_content(topic, category):
     print(f"글 작성 중: {topic}")
     today = datetime.now().strftime("%Y년 %m월 %d일")
@@ -130,38 +174,39 @@ def generate_content(topic, category):
     prompt = f"""
 당신은 한국 블로그 '네스터로그(nesterlog.com)'의 전문 한국어 블로거입니다.
 애드센스 승인을 목표로, 독자에게 실제로 도움이 되는 고품질 한국어 글을 작성하세요.
+직접 해본 것처럼 구체적인 숫자·순서·실패 사례를 넣고, 뻔한 AI 문장 투를 피하세요.
 
 블로그 니치(주제 축): {BLOG_NICHE}
 오늘 다룰 소재: "{topic}"
 소재 출처 분류: {category}
-작성일 표기: {today}
+작성일: {today}
 
 중요 규칙:
 1. 반드시 자연스러운 한국어로만 작성
-2. 뉴스 그대로 베끼지 말고, 독자가 바로 써먹을 수 있는 가이드/정리/팁 중심으로 재구성
-3. 허위 사실·과장·의료/법률/투자 확정 조언 금지. 필요하면 "참고용"으로 표현
-4. 포맷은 HTML만 사용. 마크다운(**볼드** 등) 금지. <strong>, <em> 사용
-5. 분량: 본문 900~1400자 분량이 아니라 단어가 아니라 한국어 기준 약 1,200~2,000자 분량의 충실한 글
-6. 실제로 존재하지 않는 URL을 만들지 말 것. 외부 링크가 확실하지 않으면 넣지 말 것
-7. 관련 글 링크는 href="#" 금지. 관련 주제는 텍스트 목록만
-8. 이미지 제안은 하되, 가짜 이미지 URL은 넣지 말 것
+2. 뉴스 베끼지 말고, 독자가 바로 따라 할 수 있는 가이드/체크리스트 중심
+3. 허위·과장·의료/법률/투자 확정 조언 금지. 필요하면 "참고용"
+4. HTML만 사용. 마크다운(**볼드**) 금지
+5. 본문 한국어 기준 약 1,500~2,500자 분량
+6. 존재하지 않는 URL 금지. 불확실하면 외부 링크 넣지 말 것
+7. href="#" 금지
+8. 본문에 <img> 태그 넣지 말 것 (이미지는 시스템이 따로 넣음)
+9. "카테고리:" 라는 문구를 본문에 쓰지 말 것 (라벨은 시스템이 처리)
+10. 제목/본문에 '애드센스 승인', '수익화 꿀팁' 같은 메타성 주제 금지
 
 응답 형식(이 순서를 반드시 지킬 것):
 
 META_DESCRIPTION: [한글 70~90자, 검색 요약]
 URL_SLUG: [영문-소문자-하이픈-슬러그]
-PRIMARY_KEYWORDS: 키워드1, 키워드2, 키워드3, 키워드4, 키워드5
+PRIMARY_KEYWORDS: 키워드1, 키워드2, 키워드3
 FOCUS_KEYPHRASE: [핵심 검색어 2~4단어]
+IMAGE_ALT: [대표 이미지용 한글 설명 한 줄]
 
 <article>
-<header>
-<h1>[검색의도 반영한 제목, 너무 자극적이지 않게]</h1>
-<p class="meta"><strong>카테고리: {BLOG_NICHE}</strong> | <time>{today}</time></p>
-</header>
+<h1>[검색의도 반영 제목, 자극적이지 않게]</h1>
 
 <section class="introduction">
-<p>[첫 100자 안에 핵심 키워드 자연스럽게. 독자 문제/관심사로 시작]</p>
-<p>[글에서 무엇을 알려줄지 한 줄 예고]</p>
+<p>[첫 문단에 핵심 키워드. 독자 고민으로 시작]</p>
+<p>[이 글에서 얻을 것 한 줄]</p>
 </section>
 
 <section>
@@ -279,6 +324,11 @@ IMAGE_SUGGESTIONS:
                     e = content.find("\n", s)
                     seo_data["focus_keyphrase"] = content[s:e].strip()
 
+                if "IMAGE_ALT:" in content:
+                    s = content.find("IMAGE_ALT:") + len("IMAGE_ALT:")
+                    e = content.find("\n", s)
+                    seo_data["image_alt"] = content[s:e].strip()
+
                 start = content.find("<h1>") + 4
                 end = content.find("</h1>")
                 title = content[start:end].strip() if start > 3 and end > start else topic
@@ -290,6 +340,15 @@ IMAGE_SUGGESTIONS:
                 if article_end == -1:
                     article_end = len(content)
                 body = content[article_start:article_end].strip()
+                body = insert_featured_image(
+                    body,
+                    {
+                        **seo_data,
+                        "focus_keyphrase": seo_data.get("image_alt")
+                        or seo_data.get("focus_keyphrase"),
+                    },
+                    topic,
+                )
             except Exception as e:
                 print(f"파싱 오류: {e}")
                 title = topic
@@ -327,12 +386,13 @@ def post_to_blogger(title, content, category, seo_data=None):
     blog_id = os.environ["BLOGGER_BLOG_ID"]
     year = datetime.now().strftime("%Y")
 
-    labels = [BLOG_NICHE, category, "가이드", year]
-    if seo_data.get("keywords"):
-        labels.extend([kw.strip() for kw in seo_data["keywords"].split(",")[:5] if kw.strip()])
+    # 라벨(=Blogger 카테고리)은 3~5개만 — 키워드 나열은 저품질로 보임
+    labels = [BLOG_NICHE]
     if seo_data.get("focus_keyphrase"):
         labels.append(seo_data["focus_keyphrase"])
-    labels = list(dict.fromkeys(labels))[:20]
+    if seo_data.get("keywords"):
+        labels.extend([kw.strip() for kw in seo_data["keywords"].split(",")[:2] if kw.strip()])
+    labels = list(dict.fromkeys([x for x in labels if x]))[:5]
 
     seo_title = title
     if seo_data.get("focus_keyphrase") and seo_data["focus_keyphrase"].lower() not in title.lower():
