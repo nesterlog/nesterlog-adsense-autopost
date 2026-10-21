@@ -25,8 +25,12 @@ GEMINI_API_URL = (
 # A모드(쉬운 모드): 기본 자동 공개. 초안만 원하면 POST_AS_DRAFT=true
 POST_AS_DRAFT = os.getenv("POST_AS_DRAFT", "false").lower() in ("1", "true", "yes")
 
-# 블로그 한 줄 니치 (예: 생활정보, 육아, 재테크, 여행)
+# 블로그 한 줄 니치 (글 톤/프롬프트용)
 BLOG_NICHE = os.getenv("BLOG_NICHE", "생활정보와 실용 가이드")
+
+# 메뉴·카테고리와 동일한 필수 라벨 (Blogger에서 라벨=카테고리)
+# 상단 메뉴 '생활꿀팁'과 반드시 일치해야 분류에 표시됨
+PRIMARY_LABEL = os.getenv("PRIMARY_LABEL", "생활꿀팁")
 
 # 주제 선택: topics = topics_ko.txt / news = 한국 뉴스 / mixed = 둘 다
 TOPIC_SOURCE = os.getenv("TOPIC_SOURCE", "topics").lower()
@@ -404,13 +408,23 @@ def post_to_blogger(title, content, category, seo_data=None):
     blog_id = os.environ["BLOGGER_BLOG_ID"]
     year = datetime.now().strftime("%Y")
 
-    # 라벨(=Blogger 카테고리)은 3~5개만 — 키워드 나열은 저품질로 보임
-    labels = [BLOG_NICHE]
+    # 라벨(=카테고리): 필수 PRIMARY_LABEL 먼저, 보조 2~3개만
+    labels = [PRIMARY_LABEL]
     if seo_data.get("focus_keyphrase"):
         labels.append(seo_data["focus_keyphrase"])
     if seo_data.get("keywords"):
-        labels.extend([kw.strip() for kw in seo_data["keywords"].split(",")[:2] if kw.strip()])
-    labels = list(dict.fromkeys([x for x in labels if x]))[:5]
+        labels.extend(
+            [kw.strip() for kw in seo_data["keywords"].split(",")[:2] if kw.strip()]
+        )
+    # 니치 문구는 라벨로 쓰지 않음(메뉴와 안 맞음). 중복·공백 제거
+    labels = [
+        x
+        for x in dict.fromkeys(labels)
+        if x and x != BLOG_NICHE and x != "생활정보와 실용 가이드"
+    ]
+    if PRIMARY_LABEL not in labels:
+        labels.insert(0, PRIMARY_LABEL)
+    labels = labels[:4]
 
     seo_title = title
     if seo_data.get("focus_keyphrase") and seo_data["focus_keyphrase"].lower() not in title.lower():
