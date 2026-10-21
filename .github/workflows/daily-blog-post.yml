@@ -1,0 +1,49 @@
+name: 애드센스용 블로그 초안 생성
+
+on:
+  schedule:
+    # 한국시간 매일 오전 10시 = UTC 01:00 (하루 1회)
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+jobs:
+  post-blog:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate draft post
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          G_REFRESH_TOKEN: ${{ secrets.G_REFRESH_TOKEN }}
+          G_CLIENT_ID: ${{ secrets.G_CLIENT_ID }}
+          G_CLIENT_SECRET: ${{ secrets.G_CLIENT_SECRET }}
+          BLOGGER_BLOG_ID: ${{ secrets.BLOGGER_BLOG_ID }}
+          POST_AS_DRAFT: ${{ vars.POST_AS_DRAFT || 'true' }}
+          BLOG_NICHE: ${{ vars.BLOG_NICHE || '생활정보와 실용 가이드' }}
+          TOPIC_SOURCE: ${{ vars.TOPIC_SOURCE || 'mixed' }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.0-flash' }}
+        run: python main.py
+
+      - name: Success notice
+        if: success()
+        run: |
+          echo "초안 생성 성공"
+          echo "시간: $(date -u)"
+          echo "Blogger 초안함에서 검수 후 발행하세요."
+
+      - name: Failure notice
+        if: failure()
+        run: |
+          echo "초안 생성 실패 — Actions 로그를 확인하세요."
