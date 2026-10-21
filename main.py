@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
+from image_pool import featured_image_html
+
 load_dotenv()
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
@@ -123,26 +125,6 @@ def convert_markdown_to_html(text):
     return text
 
 
-def build_featured_image_html(alt_text, english_keyword="lifestyle"):
-    """대표 이미지 1장 HTML (테마 썸네일용).
-
-    무료 스톡: LoremFlickr(주제 키워드 매칭) — Unsplash/Pexels처럼
-    키워드로 관련 사진을 가져오되, 저작권·품질은 발행 전 교체를 권장.
-    """
-    safe_kw = re.sub(r"[^a-zA-Z0-9,\-]", "", english_keyword.replace(" ", ","))[:40] or "lifestyle,home"
-    lock = abs(hash(alt_text + safe_kw)) % 100000
-    # lock=숫자 로 같은 글이면 같은 이미지 유지
-    src = f"https://loremflickr.com/1200/630/{safe_kw}?lock={lock}"
-    alt = (alt_text or "대표 이미지").replace('"', "")
-    return (
-        f'<figure class="featured-image" style="margin:0 0 1.5em 0;">'
-        f'<img src="{src}" alt="{alt}" width="1200" height="630" '
-        f'style="max-width:100%;height:auto;border-radius:8px;" loading="lazy" />'
-        f'<figcaption style="font-size:0.9em;color:#666;">{alt}</figcaption>'
-        f"</figure>"
-    )
-
-
 def insert_featured_image(body, seo_data, topic):
     """본문 맨 앞(또는 h1 뒤)에 대표 이미지 1장 삽입. 카테고리 메타 줄 제거."""
     body = re.sub(
@@ -154,12 +136,28 @@ def insert_featured_image(body, seo_data, topic):
     )
     body = re.sub(r"<strong>카테고리:.*?</strong>\s*\|\s*", "", body)
     body = re.sub(r"카테고리:\s*[^|<]+(\||</)", r"\1", body)
+    # 깨진 외부 이미지(loremflickr 등) 제거 후 재삽입
+    body = re.sub(
+        r'<figure class="featured-image">.*?</figure>',
+        "",
+        body,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    body = re.sub(
+        r'<img[^>]+loremflickr[^>]+>',
+        "",
+        body,
+        flags=re.IGNORECASE,
+    )
 
-    alt = seo_data.get("focus_keyphrase") or topic or BLOG_NICHE
-    # 영문 키워드는 슬러그에서 추출
-    en = seo_data.get("url_slug") or "daily,life,guide"
-    en = en.replace("-", ",")
-    img = build_featured_image_html(alt, en)
+    alt = (
+        seo_data.get("image_alt")
+        or seo_data.get("focus_keyphrase")
+        or topic
+        or BLOG_NICHE
+    )
+    slug = seo_data.get("url_slug") or ""
+    img = featured_image_html(alt, topic=topic, slug=slug)
 
     if re.search(r"<img\s", body, re.IGNORECASE):
         return body

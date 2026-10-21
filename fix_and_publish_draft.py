@@ -6,7 +6,7 @@ from pathlib import Path
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-from main import build_featured_image_html
+from image_pool import featured_image_html
 
 
 def load_env():
@@ -45,10 +45,7 @@ def clean_body(html: str, title: str) -> str:
     html = re.sub(r"<!--\s*ADSENSE_REVIEW_NOTE.*?-->", "", html, flags=re.DOTALL)
 
     if not re.search(r"<img\s", html, re.IGNORECASE):
-        img = build_featured_image_html(
-            title,
-            "cold,prevention,home,health,routine",
-        )
+        img = featured_image_html(title, topic=title, slug="health,cold,home")
         if "</h1>" in html:
             html = html.replace("</h1>", "</h1>\n" + img, 1)
         else:
