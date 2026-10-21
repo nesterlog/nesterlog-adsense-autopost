@@ -1,5 +1,8 @@
 .env
 client_secret.json
+posts_inventory.json
+posts_full.json
+*.json.bak
 *.pyc
 __pycache__/
 .venv/
