@@ -33,6 +33,7 @@ jobs:
           BLOGGER_BLOG_ID: ${{ secrets.BLOGGER_BLOG_ID }}
           POST_AS_DRAFT: ${{ vars.POST_AS_DRAFT || 'false' }}
           BLOG_NICHE: ${{ vars.BLOG_NICHE || '생활정보와 실용 가이드' }}
+          PRIMARY_LABEL: ${{ vars.PRIMARY_LABEL || '생활꿀팁' }}
           TOPIC_SOURCE: ${{ vars.TOPIC_SOURCE || 'topics' }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
         run: python main.py
