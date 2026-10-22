@@ -526,6 +526,36 @@ IMAGE_ALT: [대표 이미지용 한글 설명 한 줄]
     return None, None, None, {}
 
 
+def build_labels(seo_data=None):
+    """카테고리 라벨 생활꿀팁을 항상 첫 번째로 반환."""
+    seo_data = seo_data or {}
+    secondary = []
+    if seo_data.get("focus_keyphrase"):
+        secondary.append(seo_data["focus_keyphrase"].strip())
+    if seo_data.get("keywords"):
+        secondary.extend(
+            [kw.strip() for kw in seo_data["keywords"].split(",")[:3] if kw.strip()]
+        )
+
+    cleaned = []
+    for x in secondary:
+        if not x:
+            continue
+        if x == BLOG_NICHE or x == "생활정보와 실용 가이드":
+            continue
+        if x == PRIMARY_LABEL:
+            continue
+        # 가나다순에서 PRIMARY보다 앞에 오면 홈 해시태그가 카테고리를 덮음 → 제외
+        if x < PRIMARY_LABEL:
+            print(f"보조 라벨 제외(정렬상 '{PRIMARY_LABEL}'보다 앞): {x}")
+            continue
+        if x not in cleaned:
+            cleaned.append(x)
+
+    labels = [PRIMARY_LABEL] + cleaned
+    return labels[:4]
+
+
 def post_to_blogger(title, content, category, seo_data=None):
     if not title or not content:
         print("콘텐츠 생성 실패. 게시 생략.")
@@ -538,23 +568,11 @@ def post_to_blogger(title, content, category, seo_data=None):
     blog_id = os.environ["BLOGGER_BLOG_ID"]
     year = datetime.now().strftime("%Y")
 
-    # 라벨(=카테고리): 필수 PRIMARY_LABEL 먼저, 보조 2~3개만
-    labels = [PRIMARY_LABEL]
-    if seo_data.get("focus_keyphrase"):
-        labels.append(seo_data["focus_keyphrase"])
-    if seo_data.get("keywords"):
-        labels.extend(
-            [kw.strip() for kw in seo_data["keywords"].split(",")[:2] if kw.strip()]
-        )
-    # 니치 문구는 라벨로 쓰지 않음(메뉴와 안 맞음). 중복·공백 제거
-    labels = [
-        x
-        for x in dict.fromkeys(labels)
-        if x and x != BLOG_NICHE and x != "생활정보와 실용 가이드"
-    ]
-    if PRIMARY_LABEL not in labels:
-        labels.insert(0, PRIMARY_LABEL)
-    labels = labels[:4]
+    # 라벨(=카테고리): PRIMARY_LABEL(생활꿀팁)은 항상 1번.
+    # Blogger/테마가 라벨을 가나다순으로 보여 주므로,
+    # 생활꿀팁보다 앞에 정렬되는 보조 라벨은 붙이지 않음(SEO는 메타 주석에 남김).
+    labels = build_labels(seo_data)
+    print(f"라벨 순서: {labels}")
 
     seo_title = title
     if seo_data.get("focus_keyphrase") and seo_data["focus_keyphrase"].lower() not in title.lower():
@@ -564,11 +582,13 @@ def post_to_blogger(title, content, category, seo_data=None):
     # 메타 설명을 HTML 주석으로 본문 상단에 남겨 검수 시 참고 (Blogger 커스텀 메타 제한 보완)
     meta = seo_data.get("meta_description", "")
     slug = seo_data.get("url_slug", "")
+    kw = seo_data.get("keywords", "")
+    focus = seo_data.get("focus_keyphrase", "")
     note = ""
-    if meta or slug:
+    if meta or slug or kw or focus:
         note = (
             f"<!-- ADSENSE_REVIEW_NOTE meta: {meta} | slug: {slug} | "
-            f"draft={POST_AS_DRAFT} -->\n"
+            f"focus: {focus} | keywords: {kw} | draft={POST_AS_DRAFT} -->\n"
         )
 
     body = {
