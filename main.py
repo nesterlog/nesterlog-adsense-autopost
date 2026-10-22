@@ -61,6 +61,96 @@ def load_topics_from_file():
     return lines
 
 
+_STOPWORDS = {
+    "방법",
+    "하는",
+    "위한",
+    "간단한",
+    "정리",
+    "팁",
+    "가이드",
+    "현실적인",
+    "따라",
+    "하는",
+    "초보도",
+    "초보",
+    "관련",
+    "대한",
+    "있는",
+    "없는",
+    "그리고",
+    "또는",
+    "생활",
+    "요령",
+    "실천",
+    "계절별",
+    "겪어보고",
+    "정착한",
+}
+
+
+def _norm_text(s: str) -> str:
+    return re.sub(r"[\s,.\-_/·|]+", "", (s or "").lower())
+
+
+def _tokens(s: str) -> set:
+    toks = re.findall(r"[가-힣a-zA-Z0-9]{2,}", s or "")
+    return {t.lower() for t in toks if t.lower() not in _STOPWORDS}
+
+
+def is_similar_topic(a: str, b: str, threshold: float = 0.45) -> bool:
+    """제목/주제가 너무 비슷하면 True (중복 발행 방지)."""
+    if not a or not b:
+        return False
+    na, nb = _norm_text(a), _norm_text(b)
+    if not na or not nb:
+        return False
+    if na in nb or nb in na:
+        return True
+    ta, tb = _tokens(a), _tokens(b)
+    if not ta or not tb:
+        return False
+    overlap = len(ta & tb) / min(len(ta), len(tb))
+    return overlap >= threshold
+
+
+def get_recent_post_meta(service, blog_id, max_results=40):
+    """최근 발행 글의 제목·대표이미지 URL 수집."""
+    titles = []
+    image_urls = set()
+    try:
+        items = (
+            service.posts()
+            .list(
+                blogId=blog_id,
+                fetchBodies=True,
+                maxResults=max_results,
+                status="LIVE",
+            )
+            .execute()
+            .get("items")
+            or []
+        )
+        for p in items:
+            title = (p.get("title") or "").strip()
+            if title:
+                titles.append(title)
+            content = p.get("content") or ""
+            for m in re.finditer(r'<img[^>]+src="(https://[^"]+)"', content, re.I):
+                image_urls.add(m.group(1))
+                break
+    except Exception as e:
+        print(f"최근 글 조회 실패(중복검사는 완화): {e}")
+    return titles, image_urls
+
+
+def conflicts_with_recent(candidate: str, recent_titles: list) -> str | None:
+    for t in recent_titles:
+        if is_similar_topic(candidate, t):
+            return t
+    return None
+
+
 def get_korean_news_topic():
     rss_feeds = {
         "주요뉴스": "https://news.google.com/rss?hl=ko&gl=KR&ceid=KR:ko",
@@ -97,27 +187,50 @@ def get_korean_news_topic():
         return None, None
 
 
-def pick_topic():
+def pick_topic(recent_titles=None):
+    """최근 글과 겹치지 않는 주제 선택."""
+    recent_titles = recent_titles or []
     file_topics = load_topics_from_file()
 
-    if TOPIC_SOURCE == "topics" and file_topics:
-        topic = random.choice(file_topics)
-        return topic, "주제목록"
+    def _ok(topic):
+        hit = conflicts_with_recent(topic, recent_titles)
+        if hit:
+            print(f"중복 주제 스킵: '{topic}' ≈ '{hit}'")
+            return False
+        return True
+
+    # 파일 주제: 미사용 후보 우선 셔플
+    fresh_file = [t for t in file_topics if _ok(t)]
+    random.shuffle(fresh_file)
+
+    if TOPIC_SOURCE == "topics":
+        if fresh_file:
+            return fresh_file[0], "주제목록"
+        if file_topics:
+            print("경고: 미사용 주제가 거의 없음. 가장 덜 겹치는 후보 사용.")
+            return random.choice(file_topics), "주제목록"
+        return None, None
 
     if TOPIC_SOURCE == "news":
+        for _ in range(8):
+            topic, cat = get_korean_news_topic()
+            if topic and _ok(topic):
+                return topic, cat
         return get_korean_news_topic()
 
-    # mixed (기본): 70% 주제목록, 30% 뉴스
-    if file_topics and random.random() < 0.7:
-        return random.choice(file_topics), "주제목록"
+    # mixed: 70% 주제목록, 30% 뉴스 (중복 제외)
+    if fresh_file and random.random() < 0.7:
+        return fresh_file[0], "주제목록"
 
-    news_topic, news_cat = get_korean_news_topic()
-    if news_topic:
-        return news_topic, news_cat
+    for _ in range(6):
+        news_topic, news_cat = get_korean_news_topic()
+        if news_topic and _ok(news_topic):
+            return news_topic, news_cat
 
+    if fresh_file:
+        return fresh_file[0], "주제목록"
     if file_topics:
         return random.choice(file_topics), "주제목록"
-
     return None, None
 
 
@@ -129,7 +242,7 @@ def convert_markdown_to_html(text):
     return text
 
 
-def insert_featured_image(body, seo_data, topic):
+def insert_featured_image(body, seo_data, topic, exclude_image_urls=None):
     """본문 맨 앞(또는 h1 뒤)에 대표 이미지 1장 삽입. 카테고리 메타 줄 제거."""
     body = re.sub(
         r'<p class="meta">.*?</p>',
@@ -161,7 +274,12 @@ def insert_featured_image(body, seo_data, topic):
         or BLOG_NICHE
     )
     slug = seo_data.get("url_slug") or ""
-    img = featured_image_html(alt, topic=topic, slug=slug)
+    img = featured_image_html(
+        alt,
+        topic=topic,
+        slug=slug,
+        exclude_urls=exclude_image_urls,
+    )
 
     if re.search(r"<img\s", body, re.IGNORECASE):
         return body
@@ -173,9 +291,19 @@ def insert_featured_image(body, seo_data, topic):
     return img + "\n" + body
 
 
-def generate_content(topic, category):
+def generate_content(topic, category, recent_titles=None, exclude_image_urls=None):
     print(f"글 작성 중: {topic}")
     today = datetime.now().strftime("%Y년 %m월 %d일")
+    recent_titles = recent_titles or []
+    avoid_block = ""
+    if recent_titles:
+        sample = "\n".join(f"- {t}" for t in recent_titles[:20])
+        avoid_block = f"""
+이미 발행된 글(절대 비슷한 제목·같은 각도 금지):
+{sample}
+- 위 목록과 겹치는 키워드·상황을 피하고, 다른 생활 장면·다른 실천법을 다루세요.
+- 제목도 위와 비슷하면 안 됩니다.
+"""
 
     prompt = f"""
 당신은 한국 생활정보 블로그 '네스터로그'를 쓰는 실제 사람입니다.
@@ -187,6 +315,7 @@ def generate_content(topic, category):
 오늘 주제: "{topic}"
 분류: {category}
 작성일: {today}
+{avoid_block}
 
 문체:
 - 존댓말, 자연스러운 구어체 약간 허용 ("저는 ~했어요", "이런 실수 했어요")
@@ -370,6 +499,7 @@ IMAGE_ALT: [대표 이미지용 한글 설명 한 줄]
                         or seo_data.get("focus_keyphrase"),
                     },
                     topic,
+                    exclude_image_urls=exclude_image_urls,
                 )
             except Exception as e:
                 print(f"파싱 오류: {e}")
@@ -480,17 +610,36 @@ if __name__ == "__main__":
     print(f"주제 소스: {TOPIC_SOURCE}")
     print("=" * 60)
 
-    max_topic_attempts = 5
+    blog_id = os.environ.get("BLOGGER_BLOG_ID") or "1587705316274533593"
+    try:
+        svc = get_blogger_service()
+        recent_titles, recent_images = get_recent_post_meta(svc, blog_id)
+    except Exception as e:
+        print(f"최근 글 메타 로드 실패: {e}")
+        recent_titles, recent_images = [], set()
+    print(f"최근 글 {len(recent_titles)}개, 사용 중 이미지 {len(recent_images)}개 제외")
+
+    max_topic_attempts = 8
     for attempt in range(max_topic_attempts):
         print(f"\n시도 {attempt + 1}/{max_topic_attempts}\n")
-        topic, category = pick_topic()
+        topic, category = pick_topic(recent_titles)
         if not topic:
             print("주제를 찾지 못했습니다. 재시도...")
             time.sleep(3)
             continue
 
-        title, body, cat, seo_data = generate_content(topic, category)
+        title, body, cat, seo_data = generate_content(
+            topic,
+            category,
+            recent_titles=recent_titles,
+            exclude_image_urls=recent_images,
+        )
         if title and body:
+            hit = conflicts_with_recent(title, recent_titles)
+            if hit:
+                print(f"생성된 제목이 기존 글과 유사 → 재시도: '{title}' ≈ '{hit}'")
+                time.sleep(2)
+                continue
             ok = post_to_blogger(title, body, cat, seo_data)
             if ok:
                 print("\n완료!")
@@ -502,3 +651,6 @@ if __name__ == "__main__":
             else:
                 print("모든 시도 실패.")
                 raise SystemExit(1)
+    else:
+        print("중복을 피한 발행에 실패했습니다.")
+        raise SystemExit(1)
