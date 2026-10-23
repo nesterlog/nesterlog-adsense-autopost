@@ -115,9 +115,10 @@ def is_similar_topic(a: str, b: str, threshold: float = 0.45) -> bool:
 
 
 def get_recent_post_meta(service, blog_id, max_results=40):
-    """최근 발행 글의 제목·대표이미지 URL 수집."""
+    """최근 발행 글의 제목·URL·대표이미지·발행시각 수집."""
     titles = []
     image_urls = set()
+    posts_meta = []
     try:
         items = (
             service.posts()
@@ -133,15 +134,266 @@ def get_recent_post_meta(service, blog_id, max_results=40):
         )
         for p in items:
             title = (p.get("title") or "").strip()
+            url = (p.get("url") or "").strip()
+            published = p.get("published") or ""
             if title:
                 titles.append(title)
+            if title and url:
+                posts_meta.append(
+                    {"title": title, "url": url, "published": published}
+                )
             content = p.get("content") or ""
             for m in re.finditer(r'<img[^>]+src="(https://[^"]+)"', content, re.I):
                 image_urls.add(m.group(1))
                 break
     except Exception as e:
         print(f"최근 글 조회 실패(중복검사는 완화): {e}")
-    return titles, image_urls
+    return titles, image_urls, posts_meta
+
+
+def hours_since_latest_post(posts_meta) -> float | None:
+    """가장 최근 LIVE 글로부터 경과 시간(시간). 없으면 None."""
+    if not posts_meta:
+        return None
+    raw = posts_meta[0].get("published") or ""
+    if not raw:
+        return None
+    try:
+        # 2026-10-23T01:17:00-07:00 형태
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        now = datetime.now(dt.tzinfo) if dt.tzinfo else datetime.now()
+        return (now - dt).total_seconds() / 3600.0
+    except Exception:
+        return None
+
+
+# GitHub cron 백업 슬롯이 겹쳐도 하루에 과다 발행되지 않게
+MIN_HOURS_BETWEEN_POSTS = float(os.getenv("MIN_HOURS_BETWEEN_POSTS", "6"))
+
+
+def strip_invisible_unicode(text: str) -> str:
+    """보이지 않는 포맷 문자(제로폭 등) 제거 — 본문 위생용."""
+    if not text:
+        return text
+    drop = {
+        0x200B,
+        0x200C,
+        0x200D,
+        0x2060,
+        0xFEFF,
+        0x00AD,
+        0x200E,
+        0x200F,
+        0x202A,
+        0x202B,
+        0x202C,
+        0x202D,
+        0x202E,
+        0x2066,
+        0x2067,
+        0x2068,
+        0x2069,
+    }
+    return "".join(ch for ch in text if ord(ch) not in drop)
+
+
+LAYOUT_TEMPLATES = {
+    "guide": {
+        "name": "실용 가이드형",
+        "body": """
+<article>
+<h1>[검색의도 반영 제목]</h1>
+<section class="introduction">
+<p>[고민으로 시작, 핵심 키워드 자연스럽게]</p>
+<p>[이 글에서 얻을 것 한 줄]</p>
+</section>
+<section>
+<h2>[소제목 1 — 준비/기준]</h2>
+<p>[설명]</p>
+<ul><li>[팁]</li><li>[팁]</li><li>[팁]</li></ul>
+</section>
+<section>
+<h2>[소제목 2 — 실천]</h2>
+<p>[설명과 주의점]</p>
+</section>
+<section>
+<h2>[소제목 3 — 상황별]</h2>
+<p>[비교 또는 체크]</p>
+</section>
+<section class="faq">
+<h2>자주 묻는 질문</h2>
+<div itemscope itemtype="https://schema.org/FAQPage">
+<!-- Question 블록 3~4개 (schema.org FAQ) -->
+</div>
+</section>
+<section class="conclusion">
+<h2>정리</h2>
+<p>[요약]</p>
+<p><strong>[자연스러운 마무리 한 줄 — 매 글마다 다른 표현]</strong></p>
+</section>
+</article>
+""",
+    },
+    "checklist": {
+        "name": "체크리스트형",
+        "body": """
+<article>
+<h1>[검색의도 반영 제목]</h1>
+<p>[짧은 도입 2~3문장. introduction 섹션 클래스 쓰지 말 것]</p>
+<section>
+<h2>바로 쓰는 체크리스트</h2>
+<ol>
+<li><strong>[항목]</strong> — [한 줄 설명]</li>
+<li><strong>[항목]</strong> — [한 줄 설명]</li>
+<li><strong>[항목]</strong> — [한 줄 설명]</li>
+<li><strong>[항목]</strong> — [한 줄 설명]</li>
+<li><strong>[항목]</strong> — [한 줄 설명]</li>
+</ol>
+</section>
+<section>
+<h2>놓치기 쉬운 포인트</h2>
+<p>[실패 경험 1개 + 교정법]</p>
+<blockquote><p>[기억할 한 줄]</p></blockquote>
+</section>
+<section>
+<h2>궁금할 수 있는 점</h2>
+<p><strong>Q.</strong> [질문]<br/>[답변 2~3문장]</p>
+<p><strong>Q.</strong> [질문]<br/>[답변]</p>
+<p><strong>Q.</strong> [질문]<br/>[답변]</p>
+</section>
+<p>[짧은 마무리. '정리'라는 단어 반복 금지]</p>
+</article>
+""",
+    },
+    "story": {
+        "name": "실수담→해결형",
+        "body": """
+<article>
+<h1>[검색의도 반영 제목]</h1>
+<section>
+<h2>이렇게 실패했어요</h2>
+<p>[구체적 실패 장면, 숫자 포함]</p>
+<p>[그때 든 생각]</p>
+</section>
+<section>
+<h2>바꿔 보니 달라진 점</h2>
+<p>[해결 과정 2단계 이상]</p>
+<ul><li>[바뀐 습관]</li><li>[바뀐 습관]</li></ul>
+</section>
+<section>
+<h2>지금 쓰는 기준</h2>
+<table border="1" cellpadding="8">
+<tr><th>상황</th><th>이렇게</th></tr>
+<tr><td>[상황1]</td><td>[행동1]</td></tr>
+<tr><td>[상황2]</td><td>[행동2]</td></tr>
+<tr><td>[상황3]</td><td>[행동3]</td></tr>
+</table>
+</section>
+<section class="faq">
+<h2>자주 묻는 질문</h2>
+<div itemscope itemtype="https://schema.org/FAQPage">
+<!-- FAQ 2~3개만 -->
+</div>
+</section>
+<p>[담백한 마무리 2문장]</p>
+</article>
+""",
+    },
+    "timeline": {
+        "name": "하루 타임라인형",
+        "body": """
+<article>
+<h1>[검색의도 반영 제목]</h1>
+<p>[왜 루틴이 필요한지 짧은 도입]</p>
+<section>
+<h2>아침</h2>
+<p>[행동 + 이유]</p>
+<ul><li>[세부]</li><li>[세부]</li></ul>
+</section>
+<section>
+<h2>낮·오후</h2>
+<p>[행동 + 현실적인 타협]</p>
+</section>
+<section>
+<h2>저녁·자기 전</h2>
+<p>[행동 + 주의]</p>
+<blockquote><p>[기억할 한 줄]</p></blockquote>
+</section>
+<section>
+<h2>하루에 이 정도면 충분합니다</h2>
+<p>[과하지 않게 요약. FAQ 섹션 넣지 말 것]</p>
+<p><strong>Q.</strong> [예상 질문 1]<br/>[짧은 답]</p>
+<p><strong>Q.</strong> [예상 질문 2]<br/>[짧은 답]</p>
+</section>
+</article>
+""",
+    },
+    "compare": {
+        "name": "비교·선택형",
+        "body": """
+<article>
+<h1>[검색의도 반영 제목]</h1>
+<section class="introduction">
+<p>[선택지가 헷갈리는 상황으로 시작]</p>
+</section>
+<section>
+<h2>한눈에 고르는 기준</h2>
+<table border="1" cellpadding="8">
+<tr><th>구분</th><th>이럴 때</th><th>비고</th></tr>
+<tr><td>[A]</td><td>[조건]</td><td>[팁]</td></tr>
+<tr><td>[B]</td><td>[조건]</td><td>[팁]</td></tr>
+<tr><td>[C]</td><td>[조건]</td><td>[팁]</td></tr>
+</table>
+</section>
+<section>
+<h2>저는 이렇게 골랐어요</h2>
+<p>[개인 기준 + 숫자/기간]</p>
+<ol><li>[단계]</li><li>[단계]</li><li>[단계]</li></ol>
+</section>
+<section class="faq">
+<h2>자주 묻는 질문</h2>
+<div itemscope itemtype="https://schema.org/FAQPage">
+<!-- FAQ 3개 -->
+</div>
+</section>
+<section class="conclusion">
+<h2>한 줄로 말하면</h2>
+<p>[결론. 댓글 유도 문구는 매번 다른 표현]</p>
+</section>
+</article>
+""",
+    },
+}
+
+
+def pick_layout():
+    key = random.choice(list(LAYOUT_TEMPLATES.keys()))
+    layout = LAYOUT_TEMPLATES[key]
+    print(f"레이아웃: {layout['name']} ({key})")
+    return key, layout
+
+
+def append_related_posts(body: str, posts_meta: list, limit: int = 2) -> str:
+    """본문 끝에 기존 글 내부링크 1~2개 (체류·SEO)."""
+    if not posts_meta or not body:
+        return body
+    picks = [p for p in posts_meta if p.get("url") and p.get("title")]
+    if not picks:
+        return body
+    random.shuffle(picks)
+    picks = picks[:limit]
+    items = "".join(
+        f'<li><a href="{p["url"]}">{p["title"]}</a></li>' for p in picks
+    )
+    block = (
+        '<section class="related-posts" style="margin-top:2em;">'
+        "<h2>같이 보면 좋은 글</h2>"
+        f"<ul>{items}</ul>"
+        "</section>"
+    )
+    if re.search(r"</article>", body, re.I):
+        return re.sub(r"</article>", block + "\n</article>", body, count=1, flags=re.I)
+    return body + "\n" + block
 
 
 def conflicts_with_recent(candidate: str, recent_titles: list) -> str | None:
@@ -291,10 +543,18 @@ def insert_featured_image(body, seo_data, topic, exclude_image_urls=None):
     return img + "\n" + body
 
 
-def generate_content(topic, category, recent_titles=None, exclude_image_urls=None):
+def generate_content(
+    topic,
+    category,
+    recent_titles=None,
+    exclude_image_urls=None,
+    recent_posts=None,
+):
     print(f"글 작성 중: {topic}")
     today = datetime.now().strftime("%Y년 %m월 %d일")
     recent_titles = recent_titles or []
+    recent_posts = recent_posts or []
+    layout_key, layout = pick_layout()
     avoid_block = ""
     if recent_titles:
         sample = "\n".join(f"- {t}" for t in recent_titles[:20])
@@ -308,110 +568,68 @@ def generate_content(topic, category, recent_titles=None, exclude_image_urls=Non
     prompt = f"""
 당신은 한국 생활정보 블로그 '네스터로그'를 쓰는 실제 사람입니다.
 인플루언서 과장 톤이 아니라, 옆집 친구가 경험 공유하듯 담백하고 구체적으로 쓰세요.
-(humanizer 원칙: AI티 제거 — '단순히~아니라', '핵심은 바로', '정리하자면' 남발 금지,
+(humanizer 원칙: AI티 제거 — '단순히~아니라', '핵심은 바로', '정리하자면',
+'알아보겠습니다', '이번 글에서는', '도움이 되셨길' 남발 금지.
 짧은 문장과 긴 문장을 섞고, 불필요한 강조·드라마틱 한 줄 마무리 금지)
 
 블로그 니치: {BLOG_NICHE}
 오늘 주제: "{topic}"
 분류: {category}
 작성일: {today}
+오늘 레이아웃: {layout['name']} ({layout_key})
 {avoid_block}
 
 문체:
 - 존댓말, 자연스러운 구어체 약간 허용 ("저는 ~했어요", "이런 실수 했어요")
-- 파워블로그처럼 허세·클릭베이트·이모지 과다 금지
+- 파워블로그 허세·클릭베이트·이모지 과다 금지
 - 구체적인 숫자/순서/실패 경험 최소 2개
 - 독자가 오늘 바로 따라 할 수 있게
+- 마무리 문장은 매 글마다 다른 표현 (같은 댓글 유도 문구 반복 금지)
 
-SEO / AEO(답변형) 요구:
+SEO / AEO:
 - 제목·첫 문단에 핵심 검색어 자연스럽게
-- H2/H3로 질문형·가이드형 소제목
-- FAQ 3~4개 (사람들이 실제로 묻는 말투)
-- 메타설명용 요약은 META_DESCRIPTION에만 (본문에 '메타:' 쓰지 말 것)
-- GEO(지역 검색)는 주제가 지역과 관련될 때만 자연스럽게 (억지 지역명 남발 금지)
+- 소제목은 질문형·가이드형 섞기
+- 레이아웃에 FAQ/스키마가 있으면 충실히, 없으면 억지로 넣지 말 것
+- 메타설명은 META_DESCRIPTION에만
+- GEO는 지역 관련 주제일 때만 자연스럽게
 
-서식(HTML) — Blogger 에디터처럼 보이도록 적당히 꾸미기:
-- 핵심 구절은 <strong>강조</strong> (과하면 안 됨, 글당 5~12회)
-- 중요 팁 한 줄은 <blockquote><p>…</p></blockquote> 인용구 1~2개
-- 비교·체크는 <table border="1" cellpadding="8"><tr><th>…</th></tr><tr><td>…</td></tr></table> 표 0~1개
-- 목록은 <ul><li> 또는 <ol><li>
-- 필요 시 <em>기울임</em>
-- 글씨색·형광펜·밑줄(<u>)·과도한 스타일 금지 (저품질·광고처럼 보임)
-- style= 인라인 색상 금지
+서식:
+- <strong> 글당 4~10회, blockquote 0~2개
+- 표는 레이아웃이 요구할 때만
+- 색상·형광펜·밑줄·인라인 style 색상 금지
 
 중요 규칙:
 1. 한국어 HTML만 (마크다운 금지)
 2. 허위·의료/법률/투자 확정 조언 금지
-3. 약 1,500~2,500자
+3. 약 1,500~2,600자
 4. 가짜 URL / href="#" 금지
 5. 본문에 <img> 넣지 말 것
-6. 본문에 "카테고리:" 문구 넣지 말 것
-7. 애드센스·수익화 메타 주제 금지
+6. "카테고리:" / 애드센스·수익화 메타 주제 금지
+7. 아래 레이아웃 뼈대를 따르되, 대괄호 안은 모두 실제 내용으로 채울 것
 
-응답 형식(이 순서를 반드시 지킬 것):
+응답 형식(순서 고정):
 
-META_DESCRIPTION: [한글 70~90자, 검색 요약]
-URL_SLUG: [영문-소문자-하이픈-슬러그]
+META_DESCRIPTION: [한글 70~90자]
+URL_SLUG: [영문-소문자-하이픈]
 PRIMARY_KEYWORDS: 키워드1, 키워드2, 키워드3
 FOCUS_KEYPHRASE: [핵심 검색어 2~4단어]
-IMAGE_ALT: [대표 이미지용 한글 설명 한 줄]
+IMAGE_ALT: [대표 이미지용 한글 한 줄]
 
-<article>
-<h1>[검색의도 반영 제목, 자극적이지 않게]</h1>
-
-<section class="introduction">
-<p>[첫 문단에 핵심 키워드. 독자 고민으로 시작]</p>
-<p>[이 글에서 얻을 것 한 줄]</p>
-</section>
-
-<section>
-<h2>[소제목 1]</h2>
-<p>[구체적 설명]</p>
-<ul>
-<li>[실천 팁]</li>
-<li>[실천 팁]</li>
-<li>[실천 팁]</li>
-</ul>
-</section>
-
-<section>
-<h2>[소제목 2]</h2>
-<p>[추가 설명과 주의점]</p>
-</section>
-
-<section>
-<h2>[소제목 3]</h2>
-<p>[비교, 체크리스트, 또는 상황별 추천]</p>
-</section>
-
-<section class="faq">
-<h2>자주 묻는 질문</h2>
-<div itemscope itemtype="https://schema.org/FAQPage">
-<div itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
-<h3 itemprop="name">Q. [질문]?</h3>
-<div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
-<p itemprop="text">[답변]</p>
-</div>
-</div>
-<!-- 질문을 3~4개 더 -->
-</div>
-</section>
-
-<section class="conclusion">
-<h2>정리</h2>
-<p>[핵심 요약]</p>
-<p><strong>비슷한 고민이 있다면 댓글로 남겨 주세요.</strong></p>
-</section>
-</article>
+{layout['body']}
 """
 
     max_retries = 3
     retry_delay = 2
+    temperature = round(random.uniform(0.85, 1.05), 2)
 
     for attempt in range(max_retries):
         try:
             payload = {
                 "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": temperature,
+                    "topP": 0.95,
+                },
                 "safetySettings": [
                     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
                     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
@@ -452,8 +670,9 @@ IMAGE_ALT: [대표 이미지용 한글 설명 한 줄]
             content = candidate["content"]["parts"][0]["text"]
             content = content.replace("```html", "").replace("```", "")
             content = convert_markdown_to_html(content)
+            content = strip_invisible_unicode(content)
 
-            seo_data = {}
+            seo_data = {"layout": layout_key}
             try:
                 if "META_DESCRIPTION:" in content:
                     s = content.find("META_DESCRIPTION:") + len("META_DESCRIPTION:")
@@ -491,6 +710,7 @@ IMAGE_ALT: [대표 이미지용 한글 설명 한 줄]
                 if article_end == -1:
                     article_end = len(content)
                 body = content[article_start:article_end].strip()
+                body = strip_invisible_unicode(body)
                 body = insert_featured_image(
                     body,
                     {
@@ -501,11 +721,12 @@ IMAGE_ALT: [대표 이미지용 한글 설명 한 줄]
                     topic,
                     exclude_image_urls=exclude_image_urls,
                 )
+                body = append_related_posts(body, recent_posts, limit=2)
             except Exception as e:
                 print(f"파싱 오류: {e}")
                 title = topic
                 body = content
-                seo_data = {}
+                seo_data = {"layout": layout_key}
 
             return title, body, category, seo_data
 
@@ -566,7 +787,6 @@ def post_to_blogger(title, content, category, seo_data=None):
 
     service = get_blogger_service()
     blog_id = os.environ["BLOGGER_BLOG_ID"]
-    year = datetime.now().strftime("%Y")
 
     # 라벨(=카테고리): PRIMARY_LABEL(생활꿀팁)은 항상 1번.
     # Blogger/테마가 라벨을 가나다순으로 보여 주므로,
@@ -584,11 +804,13 @@ def post_to_blogger(title, content, category, seo_data=None):
     slug = seo_data.get("url_slug", "")
     kw = seo_data.get("keywords", "")
     focus = seo_data.get("focus_keyphrase", "")
+    layout = seo_data.get("layout", "")
     note = ""
-    if meta or slug or kw or focus:
+    if meta or slug or kw or focus or layout:
         note = (
             f"<!-- ADSENSE_REVIEW_NOTE meta: {meta} | slug: {slug} | "
-            f"focus: {focus} | keywords: {kw} | draft={POST_AS_DRAFT} -->\n"
+            f"focus: {focus} | keywords: {kw} | layout: {layout} | "
+            f"draft={POST_AS_DRAFT} -->\n"
         )
 
     body = {
@@ -633,11 +855,25 @@ if __name__ == "__main__":
     blog_id = os.environ.get("BLOGGER_BLOG_ID") or "1587705316274533593"
     try:
         svc = get_blogger_service()
-        recent_titles, recent_images = get_recent_post_meta(svc, blog_id)
+        recent_titles, recent_images, recent_posts = get_recent_post_meta(svc, blog_id)
     except Exception as e:
         print(f"최근 글 메타 로드 실패: {e}")
-        recent_titles, recent_images = [], set()
+        recent_titles, recent_images, recent_posts = [], set(), []
     print(f"최근 글 {len(recent_titles)}개, 사용 중 이미지 {len(recent_images)}개 제외")
+
+    # 백업 cron이 연달아 돌아도 과다 발행 방지 (수동 Run은 항상 허용)
+    event_name = os.getenv("GITHUB_EVENT_NAME", "")
+    elapsed = hours_since_latest_post(recent_posts)
+    if (
+        event_name == "schedule"
+        and elapsed is not None
+        and elapsed < MIN_HOURS_BETWEEN_POSTS
+    ):
+        print(
+            f"최근 글이 {elapsed:.1f}시간 전 발행됨 "
+            f"(최소 간격 {MIN_HOURS_BETWEEN_POSTS}시간). 스케줄 백업 건너뜀."
+        )
+        raise SystemExit(0)
 
     max_topic_attempts = 8
     for attempt in range(max_topic_attempts):
@@ -653,6 +889,7 @@ if __name__ == "__main__":
             category,
             recent_titles=recent_titles,
             exclude_image_urls=recent_images,
+            recent_posts=recent_posts,
         )
         if title and body:
             hit = conflicts_with_recent(title, recent_titles)
