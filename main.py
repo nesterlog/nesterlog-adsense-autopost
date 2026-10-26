@@ -844,6 +844,99 @@ def post_to_blogger(title, content, category, seo_data=None):
         return False
 
 
+PRIVACY_HTML = """
+<div class="privacy-policy-page" style="line-height: 1.8; color: #333;">
+<h2>개인정보처리방침 (Privacy Policy)</h2>
+<p><strong>네스터의 정보저장소(nesterlog.com)</strong>(이하 \x27본 블로그\x27)는 이용자의 개인정보를 매우 소중하게 생각하며, 관련 법령 및 글로벌 표준 가이드라인을 준수합니다. 본 개인정보처리방침은 본 블로그가 수집하는 정보, 정보의 이용 목적, 그리고 제3자 광고 사업자(Google AdSense 등)의 쿠키 사용과 관련된 사항을 투명하게 안내하기 위해 작성되었습니다.</p>
+
+<hr style="border: 0; border-top: 1px solid #eee; margin: 24px 0;" />
+
+<h3>1. 수집하는 개인정보 항목 및 수집 방법</h3>
+<p>본 블로그는 회원가입 없이 누구나 자유롭게 콘텐츠를 열람할 수 있는 공개 블로그입니다.</p>
+<ul>
+  <li><strong>댓글 작성 및 문의 시:</strong> 작성자가 자발적으로 입력하는 닉네임, 이메일 주소, 웹사이트 URL, 문의 내용이 수집될 수 있습니다.</li>
+  <li><strong>서비스 이용 과정에서 자동 생성되는 정보:</strong> 방문자의 IP 주소, 브라우저 종류, 운영체제(OS), 방문 일시, 방문 경로(리퍼러), 이용 기록 등이 서비스 통계 분석 및 보안을 위해 자동으로 생성되어 수집될 수 있습니다.</li>
+</ul>
+
+<h3>2. 개인정보의 이용 목적</h3>
+<p>수집된 정보는 다음의 목적에 한하여 이용됩니다.</p>
+<ul>
+  <li>이용자의 문의 사항에 대한 확인 및 답변 처리</li>
+  <li>스팸 댓글 차단 및 악성 트래픽 방지</li>
+  <li>블로그 콘텐츠 품질 개선 및 방문자 통계 분석</li>
+</ul>
+
+<h3>3. 쿠키(Cookie) 및 웹 비콘의 사용 안내 (Google AdSense 등 광고 사업자 관련)</h3>
+<p>본 블로그는 방문자에게 맞춤형 서비스를 제공하고 광고를 게재하기 위해 \x27쿠키(Cookie)\x27를 사용합니다. 쿠키는 웹사이트를 방문할 때 이용자의 컴퓨터 또는 모바일 기기에 저장되는 작은 텍스트 파일입니다.</p>
+
+<div style="background-color: #f8f9fa; border-left: 4px solid #4a90e2; padding: 15px; margin: 15px 0;">
+  <p style="margin: 0 0 10px 0;"><strong>[중요] 구글 애드센스(Google AdSense) 및 제3자 광고 게재 고지:</strong></p>
+  <ul style="margin: 0; padding-left: 20px;">
+    <li>구글(Google)을 포함한 제3자 광고 사업자는 이용자가 본 블로그 및 다른 인터넷 웹사이트를 방문한 기록을 바탕으로 관심사 기반 맞춤형 광고를 게재하기 위해 쿠키를 사용합니다.</li>
+    <li>구글의 광고 쿠키(DART 쿠키 등) 사용을 통해 구글 및 협력사는 이용자의 본 사이트 및 기타 인터넷 사이트 방문 정보를 기반으로 적절한 광고를 제공할 수 있습니다.</li>
+  </ul>
+</div>
+
+<h3>4. 이용자의 쿠키 설정 및 거부(Opt-out) 방법</h3>
+<p>이용자는 관심 기반 맞춤형 광고 게재를 원하지 않을 경우, 쿠키 설정을 거부하거나 삭제할 권리가 있습니다.</p>
+<ul>
+  <li><strong>구글 맞춤형 광고 설정 해제:</strong> <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer">구글 광고 설정 (Google Ads Settings)</a> 페이지를 방문하여 맞춤설정 광고 게재를 사용 중지할 수 있습니다.</li>
+  <li><strong>제3자 광고 쿠키 수집 거부:</strong> <a href="https://www.aboutads.info/choices/" target="_blank" rel="noopener noreferrer">AboutAds.info Choices</a> 또는 <a href="https://youronlinechoices.com" target="_blank" rel="noopener noreferrer">Your Online Choices</a> 웹사이트를 통해 타사 업체의 맞춤형 광고 쿠키 사용을 일괄 차단할 수 있습니다.</li>
+  <li><strong>웹 브라우저 쿠키 차단 설정:</strong> 웹 브라우저의 옵션 설정을 통해 모든 쿠키의 저장을 거부하거나 쿠키가 저장될 때마다 확인을 거치도록 설정할 수 있습니다.</li>
+</ul>
+
+<h3>5. 개인정보의 보유 및 파기</h3>
+<p>본 블로그는 원칙적으로 개인정보의 수집 및 이용 목적이 달성된 후에는 해당 정보를 지체 없이 파기합니다. 전자적 파일 형태로 저장된 개인정보는 기록을 재생할 수 없는 기술적 방법을 사용하여 영구 삭제합니다.</p>
+
+<h3>6. 개인정보 보호 문의처</h3>
+<p>본 블로그의 개인정보 처리와 관련하여 질문, 의견, 또는 불만 사항이 있으신 경우 아래 연락처로 문의해 주시기 바랍니다.</p>
+<ul>
+  <li><strong>운영자:</strong> 네스터 (Nester)</li>
+  <li><strong>이메일 문의:</strong> <a href="mailto:nesterlog@gmail.com">nesterlog@gmail.com</a></li>
+  <li><strong>블로그 주소:</strong> <a href="https://www.nesterlog.com">https://www.nesterlog.com</a></li>
+</ul>
+
+<p style="color: #888; font-size: 0.9em; margin-top: 30px;">공고일자: 2026년 10월 26일<br/>시행일자: 2026년 10월 26일</p>
+</div>
+""".strip()
+
+
+def ensure_privacy_policy_updated(svc, blog_id):
+    try:
+        pages = (
+            svc.pages()
+            .list(blogId=blog_id, fetchBodies=True, maxResults=20)
+            .execute()
+            .get("items")
+            or []
+        )
+        for p in pages:
+            url = p.get("url") or ""
+            title = p.get("title") or ""
+            content = p.get("content") or ""
+            if "privacy" in url.lower() or "개인정보" in title or "Privacy" in title:
+                if "Google AdSense" in content and "맞춤형 광고" in content and len(content) > 1000:
+                    return
+                updated = {
+                    "kind": "blogger#page",
+                    "id": p["id"],
+                    "title": "개인정보처리방침 (Privacy Policy)",
+                    "content": PRIVACY_HTML,
+                }
+                res = svc.pages().update(blogId=blog_id, pageId=p["id"], body=updated).execute()
+                print("개인정보처리방침(Privacy Policy) 최신 규정 업데이트 완료:", res.get("url"))
+                return
+        new_page = {
+            "kind": "blogger#page",
+            "title": "개인정보처리방침 (Privacy Policy)",
+            "content": PRIVACY_HTML,
+        }
+        res = svc.pages().insert(blogId=blog_id, body=new_page, isDraft=False).execute()
+        print("개인정보처리방침(Privacy Policy) 페이지 신규 생성 완료:", res.get("url"))
+    except Exception as e:
+        print(f"개인정보처리방침 업데이트 확인 중 알림: {e}")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("네스터로그 애드센스 자동 발행 (A모드 지원)")
@@ -855,6 +948,7 @@ if __name__ == "__main__":
     blog_id = os.environ.get("BLOGGER_BLOG_ID") or "1587705316274533593"
     try:
         svc = get_blogger_service()
+        ensure_privacy_policy_updated(svc, blog_id)
         recent_titles, recent_images, recent_posts = get_recent_post_meta(svc, blog_id)
     except Exception as e:
         print(f"최근 글 메타 로드 실패: {e}")
