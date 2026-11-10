@@ -26,11 +26,10 @@ GEMINI_API_URL = (
 POST_AS_DRAFT = os.getenv("POST_AS_DRAFT", "false").lower() in ("1", "true", "yes")
 
 # 블로그 한 줄 니치 (글 톤/프롬프트용)
-BLOG_NICHE = os.getenv("BLOG_NICHE", "생활정보와 실용 가이드")
+BLOG_NICHE = os.getenv("BLOG_NICHE", "IT/디지털 오류 해결 및 실생활 행정 트러블슈팅 전문 가이드")
 
 # 메뉴·카테고리와 동일한 필수 라벨 (Blogger에서 라벨=카테고리)
-# 상단 메뉴 '생활꿀팁'과 반드시 일치해야 분류에 표시됨
-PRIMARY_LABEL = os.getenv("PRIMARY_LABEL", "생활꿀팁")
+PRIMARY_LABEL = os.getenv("PRIMARY_LABEL", "IT 오류 해결")
 
 # 주제 선택: topics = topics_ko.txt / news = 한국 뉴스 / mixed = 둘 다
 TOPIC_SOURCE = os.getenv("TOPIC_SOURCE", "topics").lower()
@@ -167,8 +166,8 @@ def hours_since_latest_post(posts_meta) -> float | None:
         return None
 
 
-# GitHub cron 백업 슬롯이 겹쳐도 하루에 과다 발행되지 않게
-MIN_HOURS_BETWEEN_POSTS = float(os.getenv("MIN_HOURS_BETWEEN_POSTS", "6"))
+# GitHub cron 백업 슬롯이 겹쳐도 하루에 과다 발행되지 않게 (1일 1편 집중 발행)
+MIN_HOURS_BETWEEN_POSTS = float(os.getenv("MIN_HOURS_BETWEEN_POSTS", "20"))
 
 
 def strip_invisible_unicode(text: str) -> str:
@@ -750,9 +749,21 @@ IMAGE_ALT: [대표 이미지용 한글 한 줄]
     return None, None, None, {}
 
 
-def build_labels(seo_data=None):
-    """카테고리 라벨 생활꿀팁을 항상 첫 번째로 반환."""
+def determine_primary_category(title: str, seo_data: dict = None) -> str:
+    """글 제목과 SEO 데이터를 분석해 3대 전문 카테고리 중 1순위 대표 라벨 지정"""
+    combined = (title + " " + str(seo_data or {})).lower()
+    if any(k in combined for k in ["윈도우", "오류", "에러", "맥북", "크롬", "드라이브", "방화벽", "작업표시줄", "인증서", "pc", "컴퓨터", "재시작", "캐시"]):
+        return "IT 오류 해결"
+    elif any(k in combined for k in ["스마트폰", "액정", "블루투스", "유심", "외장", "이어폰", "아이폰", "모바일", "충전", "배터리", "ssd"]):
+        return "PC·모바일 트러블슈팅"
+    else:
+        return "디지털 행정·생활"
+
+
+def build_labels(seo_data=None, title=""):
+    """Blogger 라벨 목록을 생성합니다. 3대 전문 카테고리가 항상 1순위 대표 라벨이 됩니다."""
     seo_data = seo_data or {}
+    primary = determine_primary_category(title, seo_data)
     secondary = []
     if seo_data.get("focus_keyphrase"):
         secondary.append(seo_data["focus_keyphrase"].strip())
@@ -765,18 +776,12 @@ def build_labels(seo_data=None):
     for x in secondary:
         if not x:
             continue
-        if x == BLOG_NICHE or x == "생활정보와 실용 가이드":
-            continue
-        if x == PRIMARY_LABEL:
-            continue
-        # 가나다순에서 PRIMARY보다 앞에 오면 홈 해시태그가 카테고리를 덮음 → 제외
-        if x < PRIMARY_LABEL:
-            print(f"보조 라벨 제외(정렬상 '{PRIMARY_LABEL}'보다 앞): {x}")
+        if x in [BLOG_NICHE, "생활정보와 실용 가이드", "생활꿀팁", primary]:
             continue
         if x not in cleaned:
             cleaned.append(x)
 
-    labels = [PRIMARY_LABEL] + cleaned
+    labels = [primary] + cleaned
     return labels[:4]
 
 
@@ -791,10 +796,8 @@ def post_to_blogger(title, content, category, seo_data=None):
     service = get_blogger_service()
     blog_id = os.environ["BLOGGER_BLOG_ID"]
 
-    # 라벨(=카테고리): PRIMARY_LABEL(생활꿀팁)은 항상 1번.
-    # Blogger/테마가 라벨을 가나다순으로 보여 주므로,
-    # 생활꿀팁보다 앞에 정렬되는 보조 라벨은 붙이지 않음(SEO는 메타 주석에 남김).
-    labels = build_labels(seo_data)
+    # 라벨(=카테고리): 3대 전문 카테고리가 항상 1번.
+    labels = build_labels(seo_data, title)
     print(f"라벨 순서: {labels}")
 
     seo_title = title
@@ -940,6 +943,89 @@ def ensure_privacy_policy_updated(svc, blog_id):
         print(f"개인정보처리방침 업데이트 확인 중 알림: {e}")
 
 
+ABOUT_HTML = """
+<div class="about-page">
+<h2>네스터로그(nesterlog.com) 소개</h2>
+<p>안녕하세요. <strong>네스터로그</strong>를 운영하는 네스터입니다.</p>
+<p>본 블로그는 일상에서 빈번하게 마주치는 <strong>PC·모바일 소프트웨어 오류 해결법, 디지털 정부 행정·민원 신청 절차, 실전 생활 금융 노하우</strong>를 깊이 있게 다루는 실용 IT/디지털 트러블슈팅 전문 블로그입니다.</p>
+<p>수많은 검색 결과 속에서 겉도는 정보가 아닌, 사용자가 겪는 불편과 에러 코드를 5분 안에 직관적으로 해결할 수 있도록 공식 매뉴얼과 실측 절차를 기반으로 단계별 가이드를 제공합니다.</p>
+
+<h3>다루는 핵심 전문 분야</h3>
+<ul>
+<li><strong>IT 오류 해결:</strong> 윈도우 OS, 맥OS, 브라우저 캐시, 네트워크 방화벽 및 소프트웨어 충돌 해결</li>
+<li><strong>PC·모바일 트러블슈팅:</strong> 스마트폰 액정 파손 시 백업, 유심 인식 오류, 블루투스 페어링, 드라이버 복구</li>
+<li><strong>디지털 행정·생활:</strong> 정부24·홈택스 즉시 발급, 교통·철도 예약/환불, 숨은 환급금 조회 및 신청</li>
+</ul>
+
+<p>모든 가이드는 신뢰할 수 있는 공식 행정 포털 및 시스템 가이드라인을 바탕으로 직접 검증하여 작성되며, 주기적으로 최신 인터페이스에 맞춰 업데이트됩니다.</p>
+<p>오류 제보 및 제휴 문의: <a href="https://www.nesterlog.com/p/disclaimer.html">연락처 및 면책조항 페이지</a>를 이용해 주세요.</p>
+</div>
+""".strip()
+
+
+def cleanup_and_reorganize_past_posts(svc, blog_id):
+    """과거 가치 없는 일상 글 DRAFT 비공개 전환, 고품질 글 3대 전문 라벨 재편, About 페이지 업데이트"""
+    try:
+        pages = svc.pages().list(blogId=blog_id, fetchBodies=True, maxResults=20).execute().get("items") or []
+        for p in pages:
+            t = p.get("title") or ""
+            u = p.get("url") or ""
+            if "about" in u.lower() or "소개" in t or "About" in t:
+                body = {"kind": "blogger#page", "id": p["id"], "title": "소개(About)", "content": ABOUT_HTML}
+                svc.pages().update(blogId=blog_id, pageId=p["id"], body=body).execute()
+                print("About 페이지를 IT/트러블슈팅 전문 블로그 소개로 업데이트했습니다.")
+                break
+    except Exception as e:
+        print(f"About 페이지 점검 중 알림: {e}")
+
+    try:
+        KEEP_KEYWORDS = [
+            "자동차 채권", "고속버스", "카카오톡", "스마트폰 액정", "윈도우11",
+            "사업자등록증명원", "KTX", "도메인 연결", "네스터로그"
+        ]
+        all_posts = []
+        page_token = None
+        while True:
+            resp = svc.posts().list(
+                blogId=blog_id, status=["LIVE"], maxResults=50, pageToken=page_token, fetchBodies=False
+            ).execute()
+            items = resp.get("items") or []
+            all_posts.extend(items)
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+
+        reverted = 0
+        for p in all_posts:
+            pid = p["id"]
+            title = p.get("title", "")
+            should_keep = any(kw.lower() in title.lower() for kw in KEEP_KEYWORDS)
+            if should_keep:
+                primary = determine_primary_category(title)
+                old_labels = p.get("labels", [])
+                new_labels = [primary] + [l for l in old_labels if l != "생활꿀팁" and l != primary]
+                try:
+                    full_post = svc.posts().get(blogId=blog_id, postId=pid).execute()
+                    body = {
+                        "kind": "blogger#post", "id": pid, "title": title,
+                        "content": full_post.get("content"), "labels": new_labels[:4]
+                    }
+                    svc.posts().update(blogId=blog_id, postId=pid, body=body).execute()
+                except Exception:
+                    pass
+            else:
+                try:
+                    svc.posts().revert(blogId=blog_id, postId=pid).execute()
+                    reverted += 1
+                    print(f"과거 저품질 글 비공개(DRAFT) 전환: {title}")
+                except Exception as e:
+                    print(f"글 비공개 전환 실패 ({title}): {e}")
+        if reverted > 0:
+            print(f"총 {reverted}개의 과거 저품질 글을 DRAFT로 정리했습니다.")
+    except Exception as e:
+        print(f"과거 글 정리 점검 중 알림: {e}")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("네스터로그 애드센스 자동 발행 (A모드 지원)")
@@ -952,6 +1038,7 @@ if __name__ == "__main__":
     try:
         svc = get_blogger_service()
         ensure_privacy_policy_updated(svc, blog_id)
+        cleanup_and_reorganize_past_posts(svc, blog_id)
         recent_titles, recent_images, recent_posts = get_recent_post_meta(svc, blog_id)
     except Exception as e:
         print(f"최근 글 메타 로드 실패: {e}")
