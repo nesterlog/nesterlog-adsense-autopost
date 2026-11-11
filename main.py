@@ -999,6 +999,11 @@ def cleanup_and_reorganize_past_posts(svc, blog_id):
         for p in all_posts:
             pid = p["id"]
             title = p.get("title", "")
+            pub_date = p.get("published", "")
+            # 11/10 개편 이후 발행된 신규 전문 글은 절대 DRAFT로 내리지 않음
+            if pub_date >= "2026-11-10T19:00:00":
+                continue
+
             should_keep = any(kw.lower() in title.lower() for kw in KEEP_KEYWORDS)
             if should_keep:
                 primary = determine_primary_category(title)
@@ -1038,7 +1043,8 @@ if __name__ == "__main__":
     try:
         svc = get_blogger_service()
         ensure_privacy_policy_updated(svc, blog_id)
-        cleanup_and_reorganize_past_posts(svc, blog_id)
+        if os.getenv("RUN_CLEANUP_PAST_POSTS", "false").lower() in ("1", "true", "yes"):
+            cleanup_and_reorganize_past_posts(svc, blog_id)
         recent_titles, recent_images, recent_posts = get_recent_post_meta(svc, blog_id)
     except Exception as e:
         print(f"최근 글 메타 로드 실패: {e}")
