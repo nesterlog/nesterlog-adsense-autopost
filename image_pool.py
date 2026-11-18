@@ -73,7 +73,6 @@ IMAGE_POOL = [
         ["water", "drink", "수분", "물", "hydrate", "습도", "가습", "제습"],
         [
             "https://images.unsplash.com/photo-1548839140-29a749e1cf4d?auto=format&fit=crop&w=1200&h=630&q=80",
-            "https://images.unsplash.com/photo-1527489377706-95ea4f4d54c6?auto=format&fit=crop&w=1200&h=630&q=80",
             "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&h=630&q=80",
         ],
     ),
@@ -119,7 +118,6 @@ IMAGE_POOL = [
         ["laundry", "wash", "세탁", "세탁기"],
         [
             "https://images.unsplash.com/photo-1582735689369-4fe89db7114c?auto=format&fit=crop&w=1200&h=630&q=80",
-            "https://images.unsplash.com/photo-1517677208171-e172fc623200?auto=format&fit=crop&w=1200&h=630&q=80",
         ],
     ),
     (
@@ -148,13 +146,6 @@ IMAGE_POOL = [
         [
             "https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?auto=format&fit=crop&w=1200&h=630&q=80",
             "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&h=630&q=80",
-        ],
-    ),
-    (
-        ["recycle", "분리수거", "쓰레기"],
-        [
-            "https://images.unsplash.com/photo-1532996122724-e3c354a0b4bd?auto=format&fit=crop&w=1200&h=630&q=80",
-            "https://images.unsplash.com/photo-1611284446314-60a58ac0deb8?auto=format&fit=crop&w=1200&h=630&q=80",
         ],
     ),
     (
