@@ -18,6 +18,15 @@
 
 ## 로컬 테스트
 
+네트워크·자격증명 없이 발행 경로를 점검할 수 있습니다(가짜 Gemini 응답·가짜 Blogger 사용).
+
+```bash
+pip install -r requirements.txt
+python3 tests/test_pipeline.py
+```
+
+## 로컬 실행
+
 ```powershell
 cd D:\cursorcode\adsenblog
 .\.venv\Scripts\Activate.ps1

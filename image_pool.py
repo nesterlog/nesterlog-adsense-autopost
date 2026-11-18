@@ -3,8 +3,57 @@
 import hashlib
 import re
 
-# (영문 키워드 패턴, Unsplash 직접 URL) — 키워드당 URL을 여러 개 두어 중복 완화
+# 2026-11 니치 개편(IT 오류·디지털 행정·생활 금융)에 맞춘 대표 이미지.
+# 앞 그룹이 우선하며, 글 주제와 맞는 그룹 하나만 사용한다.
+_IT_IMG = [
+    "https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&w=1200&h=630&q=80",
+    "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&h=630&q=80",
+]
+_MOBILE_IMG = [
+    "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=1200&h=630&q=80",
+    "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?auto=format&fit=crop&w=1200&h=630&q=80",
+]
+_ADMIN_IMG = [
+    "https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=1200&h=630&q=80",
+]
+_FINANCE_IMG = [
+    "https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?auto=format&fit=crop&w=1200&h=630&q=80",
+    "https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=1200&h=630&q=80",
+]
+
+# (영문/한글 키워드 패턴, Unsplash 직접 URL) — 키워드당 URL을 여러 개 두어 중복 완화
 IMAGE_POOL = [
+    (
+        [
+            "윈도우", "윈도우11", "크롬", "브라우저", "캐시", "오류", "에러", "컴퓨터",
+            "노트북", "데스크톱", "드라이버", "방화벽", "맥os", "맥북", "작업표시줄",
+            "프로그램", "메모리", "업데이트", "설치", "laptop", "computer", "browser",
+        ],
+        _IT_IMG,
+    ),
+    (
+        [
+            "스마트폰", "아이폰", "갤럭시", "휴대폰", "액정", "블루투스", "이어폰",
+            "유심", "배터리", "충전", "핫스팟", "nfc", "여권", "사진", "백업",
+            "phone", "smartphone", "mobile",
+        ],
+        _MOBILE_IMG,
+    ),
+    (
+        [
+            "정부24", "홈택스", "민원", "서류", "증명", "등본", "신청", "행정", "세금",
+            "세액", "소득공제", "연말정산", "보험", "연금", "실업", "급여", "청약",
+            "환급", "공제", "계약", "등기", "관리비", "세대",
+        ],
+        _ADMIN_IMG,
+    ),
+    (
+        [
+            "카드", "결제", "수수료", "환불", "은행", "계좌", "적금", "예금", "환전",
+            "dcc", "송금", "대출", "이자", "비과세", "페이", "money", "budget", "finance",
+        ],
+        _FINANCE_IMG,
+    ),
     (
         ["health", "cold", "flu", "medical", "면역", "감기", "건강", "병원"],
         [
@@ -118,27 +167,34 @@ IMAGE_POOL = [
 ]
 
 DEFAULT_IMAGE = (
-    "https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e"
+    "https://images.unsplash.com/photo-1497366216548-37526070297c"
     "?auto=format&fit=crop&w=1200&h=630&q=80"
 )
 
+# 어떤 주제든 어색하지 않은 니치 기본 이미지 (노트북·서류·사무공간·스마트폰·금융·물류)
 FALLBACKS = [
-    "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=1200&h=630&q=80",
-    "https://images.unsplash.com/photo-1511988617509-a57c8a288659?auto=format&fit=crop&w=1200&h=630&q=80",
-    "https://images.unsplash.com/photo-1470252649378-9c29740c9fa8?auto=format&fit=crop&w=1200&h=630&q=80",
-    "https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=1200&h=630&q=80",
-    "https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?auto=format&fit=crop&w=1200&h=630&q=80",
-    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=1200&h=630&q=80",
-    "https://picsum.photos/id/292/1200/630.jpg",
-    "https://picsum.photos/id/326/1200/630.jpg",
-    "https://picsum.photos/id/1015/1200/630.jpg",
-    "https://picsum.photos/id/201/1200/630.jpg",
+    "https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&w=1200&h=630&q=80",
+    "https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=1200&h=630&q=80",
+    "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&h=630&q=80",
+    "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=1200&h=630&q=80",
+    "https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?auto=format&fit=crop&w=1200&h=630&q=80",
+    "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&h=630&q=80",
 ]
 
 
 def _base_url(url: str) -> str:
     """쿼리 제거한 비교용 URL."""
     return (url or "").split("?")[0].rstrip("/")
+
+
+def _key_hits(key: str, blob: str) -> bool:
+    """키워드가 본문 blob에 실제로 등장하는지 검사."""
+    key = key.lower()
+    if not key:
+        return False
+    if re.fullmatch(r"[a-z0-9 ]+", key):
+        return re.search(r"(?<![a-z0-9])" + re.escape(key) + r"(?![a-z0-9])", blob) is not None
+    return key in blob
 
 
 def pick_image_url(
@@ -153,11 +209,14 @@ def pick_image_url(
 
     candidates: list[str] = []
     for keys, urls in IMAGE_POOL:
-        if any(k.lower() in blob_norm for k in keys):
+        # 영문 키는 단어 경계로 검사한다. 'ac'(에어컨)가 'cache' 안에서 걸리는 식의
+        # 오매칭을 막기 위함. 한글 키는 부분 일치로 충분하다.
+        if any(_key_hits(k, blob_norm) for k in keys):
             if isinstance(urls, str):
                 candidates.append(urls)
             else:
                 candidates.extend(urls)
+            break
 
     if not candidates:
         candidates = list(FALLBACKS)

@@ -372,14 +372,27 @@ def pick_layout():
     return key, layout
 
 
-def append_related_posts(body: str, posts_meta: list, limit: int = 2) -> str:
-    """본문 끝에 기존 글 내부링크 1~2개 (체류·SEO)."""
+def append_related_posts(body: str, posts_meta: list, limit: int = 2, base_title: str = "") -> str:
+    """본문 끝에 기존 글 내부링크 1~2개 (체류·SEO).
+
+    무작위가 아니라 지금 쓰는 글과 단어가 겹치는 글을 우선한다.
+    (예: 국민연금 글 밑에 윈도우11 작업표시줄 글이 붙던 문제)
+    """
     if not posts_meta or not body:
         return body
     picks = [p for p in posts_meta if p.get("url") and p.get("title")]
     if not picks:
         return body
+
+    base_tokens = _tokens(base_title) if base_title else set()
+
+    def _score(p: dict) -> tuple:
+        shared = len(base_tokens & _tokens(p.get("title", "")))
+        # 같은 단어가 많을수록 앞으로, 동점이면 매번 다른 순서가 되도록 난수 보조
+        return (-shared, random.random())
+
     random.shuffle(picks)
+    picks.sort(key=_score)
     picks = picks[:limit]
     items = "".join(
         f'<li><a href="{p["url"]}">{p["title"]}</a></li>' for p in picks
@@ -491,6 +504,17 @@ def convert_markdown_to_html(text):
     text = re.sub(r"__(.+?)__", r"<strong>\1</strong>", text)
     text = re.sub(r"`(.+?)`", r"<code>\1</code>", text)
     return text
+
+
+def strip_body_h1(body: str) -> str:
+    """본문 맨 앞의 <h1> 제거.
+
+    블로거 테마가 글 제목을 이미 <h1>으로 출력하므로, 본문에도 <h1>이 있으면
+    모든 글에 같은 문장의 H1이 두 번씩 들어가 중복 제목 신호가 된다.
+    """
+    if not body:
+        return body
+    return re.sub(r"<h1[^>]*>.*?</h1>", "", body, count=1, flags=re.S | re.I)
 
 
 def insert_featured_image(body, seo_data, topic, exclude_image_urls=None):
@@ -713,6 +737,7 @@ IMAGE_ALT: [대표 이미지용 한글 한 줄]
                     article_end = len(content)
                 body = content[article_start:article_end].strip()
                 body = strip_invisible_unicode(body)
+                body = strip_body_h1(body)
                 body = insert_featured_image(
                     body,
                     {
@@ -723,7 +748,9 @@ IMAGE_ALT: [대표 이미지용 한글 한 줄]
                     topic,
                     exclude_image_urls=exclude_image_urls,
                 )
-                body = append_related_posts(body, recent_posts, limit=2)
+                body = append_related_posts(
+                    body, recent_posts, limit=2, base_title=title
+                )
             except Exception as e:
                 print(f"파싱 오류: {e}")
                 title = topic
@@ -785,6 +812,52 @@ def build_labels(seo_data=None, title=""):
     return labels[:4]
 
 
+# 프롬프트에서 금지한 AI 상투어 — 본문에 남으면 저품질 신호가 된다.
+FILLER_PHRASES = (
+    "단순히 ",
+    "핵심은 바로",
+    "정리하자면",
+    "알아보겠습니다",
+    "이번 글에서는",
+    "도움이 되셨길",
+    "살펴보겠습니다",
+)
+
+
+def validate_post(title, body, seo_data=None):
+    """발행 전 자체 검사. 문제 목록을 돌려주고, 비어 있으면 발행해도 된다."""
+    seo_data = seo_data or {}
+    problems = []
+
+    title = (title or "").strip()
+    if len(title) < 12:
+        problems.append(f"제목이 너무 짧음({len(title)}자)")
+    if len(title) > 60:
+        problems.append(f"제목이 너무 길어 검색결과에서 잘림({len(title)}자)")
+
+    plain = re.sub(r"\s+", "", re.sub(r"<[^>]+>", " ", body or ""))
+    if len(plain) < 1400:
+        problems.append(f"본문 분량 부족({len(plain)}자, 기준 1400자)")
+
+    if len(re.findall(r"<h2", body or "", re.I)) < 2:
+        problems.append("소제목(h2) 2개 미만")
+    if not re.search(r"<(ul|ol|table)\b", body or "", re.I):
+        problems.append("목록·표 구조 없음")
+    if re.search(r"<h1\b", body or "", re.I):
+        problems.append("본문에 h1 중복")
+
+    found = [p.strip() for p in FILLER_PHRASES if p in (body or "")]
+    if found:
+        # 상투어 하나 때문에 발행을 통째로 미루지는 않고 기록만 남긴다.
+        print("경고: AI 상투어 감지 → " + ", ".join(found))
+
+    desc = (seo_data.get("meta_description") or "").strip()
+    if desc and not (40 <= len(desc) <= 200):
+        problems.append(f"메타 설명 길이 이상({len(desc)}자)")
+
+    return problems
+
+
 def post_to_blogger(title, content, category, seo_data=None):
     if not title or not content:
         print("콘텐츠 생성 실패. 게시 생략.")
@@ -805,24 +878,24 @@ def post_to_blogger(title, content, category, seo_data=None):
         # 제목이 너무 길어지지 않게 보조 키워드는 라벨에만 두고 제목은 유지
         seo_title = title
 
-    # 메타 설명을 HTML 주석으로 본문 상단에 남겨 검수 시 참고 (Blogger 커스텀 메타 제한 보완)
+    # 검수 참고 정보(메타·슬러그·핵심어)는 실행 로그에만 남긴다.
+    # 예전에는 글 본문 맨 앞에 HTML 주석으로 넣었는데,
+    # 방문자·크롤러·애드센스 심사자 모두에게 그대로 보이는 자동생성 흔적이었다.
     meta = seo_data.get("meta_description", "")
     slug = seo_data.get("url_slug", "")
     kw = seo_data.get("keywords", "")
     focus = seo_data.get("focus_keyphrase", "")
     layout = seo_data.get("layout", "")
-    note = ""
     if meta or slug or kw or focus or layout:
-        note = (
-            f"<!-- ADSENSE_REVIEW_NOTE meta: {meta} | slug: {slug} | "
-            f"focus: {focus} | keywords: {kw} | layout: {layout} | "
-            f"draft={POST_AS_DRAFT} -->\n"
+        print(
+            f"검수 참고 | meta: {meta} | slug: {slug} | focus: {focus} | "
+            f"keywords: {kw} | layout: {layout}"
         )
 
     body = {
         "kind": "blogger#post",
         "title": seo_title[:100],
-        "content": note + content,
+        "content": content,
         "labels": labels,
     }
 
@@ -1085,6 +1158,13 @@ if __name__ == "__main__":
             hit = conflicts_with_recent(title, recent_titles)
             if hit:
                 print(f"생성된 제목이 기존 글과 유사 → 재시도: '{title}' ≈ '{hit}'")
+                time.sleep(2)
+                continue
+            problems = validate_post(title, body, seo_data)
+            if problems:
+                print("발행 전 점검 실패 → 재시도:")
+                for p in problems:
+                    print(f"  - {p}")
                 time.sleep(2)
                 continue
             ok = post_to_blogger(title, body, cat, seo_data)
